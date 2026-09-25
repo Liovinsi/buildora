@@ -1,0 +1,30 @@
+{
+  "name": "buildora-backend",
+  "version": "1.0.0",
+  "description": "Buildora API - businesses, stores, products and WhatsApp Cloud API inbox",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test:api": "node scripts/smoke-test.js",
+    "simulate": "node scripts/simulate-incoming.js",
+    "test:whatsapp": "node scripts/whatsapp-test.js",
+    "test:commerce": "node scripts/commerce-test.js"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.3",
+    "express": "^5.2.1",
+    "mongoose": "^9.10.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true
+}
