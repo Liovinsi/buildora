@@ -125,6 +125,8 @@ export default function PublicStorePage() {
 
         <footer className="mt-12 text-center text-xs text-neutral-400">
           Powered by <a href="/" className="font-medium hover:text-neutral-600">Buildora</a>
+          {' · '}
+          <a href="/privacy-policy" className="hover:text-neutral-600">Privacy Policy</a>
         </footer>
       </div>
 

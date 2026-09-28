@@ -1,5 +1,6 @@
 import { ArrowRight, Check, MessageCircle } from 'lucide-react';
 import { Logo } from '../components/Logo';
+import { SiteFooter } from '../components/SiteFooter';
 import { Button } from '../components/ui/Button';
 import { FEATURES, STEPS } from '../data/landing';
 import { readStorage } from '../utils/storage';
@@ -89,9 +90,7 @@ export default function LandingPage() {
         </Button>
       </section>
 
-      <footer className="border-t border-neutral-100 py-8 text-center text-sm text-neutral-500">
-        © {new Date().getFullYear()} Buildora
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

@@ -60,6 +60,8 @@ export function getStatus(req, res) {
   res.json({ success: true, data: publicWhatsAppStatus(req.business) });
 }
 
+const SDK_REDIRECT_PREFIX = 'https://staticxx.facebook.com/x/connect/xd_arbiter/';
+
 const optionalId = (value, label) => {
   const id = String(value ?? '').trim();
   if (id && !META_ID_RE.test(id)) throw ApiError.badRequest(`Invalid ${label} from Meta`);
@@ -85,16 +87,32 @@ export async function connect(req, res) {
   if (!FINISH_EVENTS.includes(event)) {
     throw ApiError.badRequest('Please finish adding your WhatsApp number in the Meta window, then try again.');
   }
+  // The exact redirect_uri of the SDK's OAuth dialog (its xd_arbiter relay); only that URL is accepted.
+  const redirectUri = String(req.body.redirectUri ?? '');
+  if (redirectUri && !redirectUri.startsWith(SDK_REDIRECT_PREFIX)) {
+    throw ApiError.badRequest('Invalid redirect URI from Meta sign-in. Please try connecting again.');
+  }
   const hintedWabaId = optionalId(req.body.wabaId, 'WhatsApp Business Account');
   const hintedPhoneId = optionalId(req.body.phoneNumberId, 'phone number');
 
   let accessToken;
   try {
-    accessToken = await exchangeCodeForToken(code);
+    accessToken = await exchangeCodeForToken(code, redirectUri);
   } catch (err) {
-    // Most common cause: the 30-second code expired or was already used.
-    console.error(`[whatsapp] code exchange failed for business ${business._id}:`, err.message);
-    throw ApiError.badRequest('The Meta connection expired before it could be completed. Please click Connect WhatsApp again.');
+    // Log Meta's error message/code/trace only: never the code, tokens or secrets.
+    const { metaCode, metaSubcode, fbtraceId } = err.details || {};
+    console.error(
+      `[whatsapp] code exchange failed for business ${business._id}: ${err.message} (meta code=${metaCode ?? 'n/a'} subcode=${metaSubcode ?? 'n/a'} fbtrace=${fbtraceId ?? 'n/a'})`
+    );
+    // Only call it "expired" when Meta says so; otherwise show Meta's actual reason.
+    const expired = /expired|already been used|has been used/i.test(err.message);
+    throw new ApiError(
+      err.status >= 500 ? 502 : 400,
+      expired
+        ? 'The Meta connection expired before it could be completed. Please click Connect WhatsApp again.'
+        : `Meta could not complete the connection: ${err.message}${metaCode ? ` (Meta error ${metaCode}${metaSubcode ? `/${metaSubcode}` : ''})` : ''}`,
+      { metaCode, metaSubcode, fbtraceId }
+    );
   }
 
   // Only trust WABAs the token was actually granted for.

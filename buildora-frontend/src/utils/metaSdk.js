@@ -8,6 +8,10 @@ let sdkPromise = null;
 
 /** Load and init the Facebook JS SDK once per page. Resolves with window.FB. */
 export function loadFacebookSdk({ appId, version }) {
+  // Meta rejects anything else with "Invalid app ID"; fail here with a clearer message.
+  if (!/^\d+$/.test(String(appId ?? ''))) {
+    return Promise.reject(new Error('Meta sign-in is misconfigured: the backend META_APP_ID is not a numeric Meta App ID.'));
+  }
   if (sdkPromise) return sdkPromise;
   sdkPromise = new Promise((resolve, reject) => {
     const init = () => {
@@ -35,6 +39,47 @@ export function loadFacebookSdk({ appId, version }) {
 export class SignupCancelled extends Error {}
 
 /**
+ * The SDK picks its own per-call redirect_uri for the OAuth dialog, and Meta only exchanges the
+ * code with that exact value. FB.login opens the dialog synchronously, so read it from window.open.
+ */
+function captureDialogRedirectUri(openDialog) {
+  const originalOpen = window.open;
+  let redirectUri;
+  window.open = function (url, ...rest) {
+    try {
+      const u = new URL(String(url), window.location.href);
+      if (u.pathname.endsWith('/dialog/oauth')) redirectUri = u.searchParams.get('redirect_uri') ?? undefined;
+    } catch {
+      // not a URL we care about
+    }
+    return originalOpen.call(this, url, ...rest);
+  };
+  try {
+    openDialog();
+  } finally {
+    window.open = originalOpen;
+  }
+  return redirectUri;
+}
+
+// FB.login returned no authorization code. Say which case it was instead of one generic message.
+function noCodeError(status, session, sawSignupMessage) {
+  if (session) {
+    return new Error('Meta finished the WhatsApp setup but did not return an authorization code. Please click Connect WhatsApp again.');
+  }
+  if (status === 'not_authorized') {
+    return new SignupCancelled('Buildora was not given permission in the Meta window. Accept the permissions to connect WhatsApp.');
+  }
+  if (!sawSignupMessage) {
+    // Meta error pages (e.g. "Invalid app ID") close without telling this page anything.
+    return new SignupCancelled(
+      'The Meta window closed before WhatsApp setup started. If Meta showed an error there (such as "Invalid app ID"), the Meta app is misconfigured; otherwise click the button to try again.'
+    );
+  }
+  return new SignupCancelled('WhatsApp setup was closed before it finished.');
+}
+
+/**
  * Open Embedded Signup. MUST be called directly from a click handler (popup blockers).
  * Resolves with { code, event, wabaId, phoneNumberId }; rejects with SignupCancelled if the
  * user closes the window, or an Error if Meta reports one.
@@ -44,6 +89,7 @@ export function launchEmbeddedSignup(FB, { configId }) {
     let session = null;
     let failure = null;
     let onSession = null;
+    let sawSignupMessage = false;
 
     const onMessage = (e) => {
       let host = '';
@@ -64,10 +110,20 @@ export function launchEmbeddedSignup(FB, { configId }) {
       if (String(data.event).startsWith('FINISH')) {
         session = { event: data.event, wabaId: data.data?.waba_id, phoneNumberId: data.data?.phone_number_id };
       } else if (data.data?.error_message) {
-        failure = new Error(data.data.error_message);
+        // Keep Meta's error and session IDs: Meta support needs them to look the failure up.
+        const ref = [data.data.error_id && `error ${data.data.error_id}`, data.data.session_id && `session ${data.data.session_id}`]
+          .filter(Boolean)
+          .join(', ');
+        failure = new Error(`Meta reported an error: ${data.data.error_message}${ref ? ` (${ref})` : ''}`);
       } else if (data.event === 'CANCEL') {
-        failure = new SignupCancelled('WhatsApp setup was not finished.');
+        const step = data.data?.current_step;
+        failure = new SignupCancelled(
+          step
+            ? `WhatsApp setup was closed at the "${step.replaceAll('_', ' ').toLowerCase()}" step before it finished.`
+            : 'WhatsApp setup was closed before it finished.'
+        );
       }
+      sawSignupMessage = true;
       onSession?.();
     };
     window.addEventListener('message', onMessage);
@@ -85,14 +141,14 @@ export function launchEmbeddedSignup(FB, { configId }) {
       });
 
     // FB.login requires a plain (non-async) callback.
-    FB.login(
+    const redirectUri = captureDialogRedirectUri(() => FB.login(
       (response) => {
         const code = response?.authResponse?.code;
         waitForSession().then(() => {
           cleanup();
           if (failure) return reject(failure);
-          if (!code) return reject(new SignupCancelled('WhatsApp setup was not finished.'));
-          resolve({ code, ...(session || {}) });
+          if (!code) return reject(noCodeError(response?.status, session, sawSignupMessage));
+          resolve({ code, redirectUri, ...(session || {}) });
         });
       },
       {
@@ -102,6 +158,6 @@ export function launchEmbeddedSignup(FB, { configId }) {
         // v3 session info: FINISH* events carry waba_id / phone_number_id / business_id.
         extras: { setup: {}, sessionInfoVersion: '3' },
       }
-    );
+    ));
   });
 }

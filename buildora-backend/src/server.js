@@ -22,7 +22,12 @@ async function start() {
   validateEnv();
 
   const app = createApp();
-  const server = app.listen(env.port, () => {
+  // Express 5 passes listen errors (e.g. EADDRINUSE) to this callback instead of throwing.
+  const server = app.listen(env.port, (err) => {
+    if (err) {
+      console.error(`[server] could not listen on port ${env.port}: ${err.message}`);
+      process.exit(1);
+    }
     console.log(`[server] Buildora API listening on http://localhost:${env.port}`);
     console.log('[server] WhatsApp webhook path: /api/webhooks/whatsapp');
   });

@@ -65,7 +65,11 @@ async function graphRequest(path, { method = 'GET', body, accessToken, query } =
     console.error('[whatsapp] Meta API error:', JSON.stringify(e));
     const message =
       FRIENDLY_ERRORS[e.code] || e.error_data?.details || e.message || `Meta API error (HTTP ${res.status})`;
-    throw new ApiError(res.status >= 500 ? 502 : 400, message, { metaCode: e.code, fbtraceId: e.fbtrace_id });
+    throw new ApiError(res.status >= 500 ? 502 : 400, message, {
+      metaCode: e.code,
+      metaSubcode: e.error_subcode,
+      fbtraceId: e.fbtrace_id,
+    });
   }
   return data;
 }
@@ -89,11 +93,16 @@ export async function getWabaPhoneNumbers(wabaId, accessToken) {
 
 const appAccessToken = () => `${env.meta.appId}|${env.meta.appSecret}`;
 
-/** Exchange the 30-second code from FB.login for a business integration system user token. */
-export async function exchangeCodeForToken(code) {
+/**
+ * Exchange the 30-second code from FB.login for a business integration system user token.
+ * Meta only accepts the exact redirect_uri the OAuth dialog used (else 100/36008). The JS SDK picks
+ * that per call (its xd_arbiter relay URL); the browser captures it and sends it with the code.
+ * Empty is kept as the fallback for clients that don't send one.
+ */
+export async function exchangeCodeForToken(code, redirectUri = '') {
   const data = await graphRequest('oauth/access_token', {
     accessToken: appAccessToken(),
-    query: { client_id: env.meta.appId, client_secret: env.meta.appSecret, code },
+    query: { client_id: env.meta.appId, client_secret: env.meta.appSecret, redirect_uri: redirectUri, code },
   });
   if (!data.access_token) throw new ApiError(502, 'Meta did not return an access token. Please try connecting again.');
   return data.access_token;

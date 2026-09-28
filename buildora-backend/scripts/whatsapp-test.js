@@ -28,7 +28,8 @@ const check = (name, cond, extra) => {
 
 // ---------------- Mock Meta Graph API ----------------
 const TENANTS = {
-  A: { code: 'code-A', token: 'tok-A-secret', waba: '1110000000001', phone: '2220000000001', display: '+91 98765 11111', name: 'Uma Fashion' },
+  // A's code comes from the JS SDK dialog, bound to its per-call xd_arbiter redirect_uri; B's has none.
+  A: { code: 'code-A', redirectUri: 'https://staticxx.facebook.com/x/connect/xd_arbiter/?version=46#cb=f1&domain=localhost&relation=opener&frame=f2', token: 'tok-A-secret', waba: '1110000000001', phone: '2220000000001', display: '+91 98765 11111', name: 'Uma Fashion' },
   B: { code: 'code-B', token: 'tok-B-secret', waba: '1110000000002', phone: '2220000000002', display: '+91 98765 22222', name: 'Ravi Bakes' },
 };
 const byToken = (t) => Object.values(TENANTS).find((x) => x.token === t);
@@ -48,7 +49,12 @@ const mock = http.createServer(async (req, res) => {
   if (path === 'oauth/access_token') {
     if (url.searchParams.get('client_id') !== APP_ID || url.searchParams.get('client_secret') !== APP_SECRET) return err(400, 101, 'bad client');
     const t = Object.values(TENANTS).find((x) => x.code === url.searchParams.get('code'));
-    return t ? send(200, { access_token: t.token, token_type: 'bearer' }) : err(400, 100, 'This authorization code has expired.');
+    if (!t) return err(400, 100, 'This authorization code has expired.');
+    // Like Meta: the code only exchanges with the exact redirect_uri its OAuth dialog used.
+    if (url.searchParams.get('redirect_uri') !== (t.redirectUri ?? '')) {
+      return send(400, { error: { code: 100, error_subcode: 36008, message: 'Error validating verification code.', fbtrace_id: 'mock' } });
+    }
+    return send(200, { access_token: t.token, token_type: 'bearer' });
   }
   if (path === 'debug_token') {
     if (token !== `${APP_ID}|${APP_SECRET}`) return err(400, 190, 'bad app token');
@@ -127,7 +133,7 @@ const server = spawn(process.execPath, ['src/server.js'], {
     META_GRAPH_URL: graphUrl,
     META_APP_ID: APP_ID,
     META_APP_SECRET: APP_SECRET,
-    META_ES_CONFIG_ID: '9876543210',
+    EMBEDDED_SIGNUP_CONFIG_ID: '9876543210',
     META_VERIFY_TOKEN: VERIFY,
     META_ACCESS_TOKEN: '',
     TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString('hex'),
@@ -171,7 +177,17 @@ try {
   r = await call('POST', '/whatsapp/connect', { businessId: bizB._id, code: B.code, event: 'FINISH', wabaId: A.waba, phoneNumberId: A.phone });
   check('connect: spoofed WABA not granted to token -> 400', r.status === 400, r.body);
 
-  r = await call('POST', '/whatsapp/connect', { businessId: bizA._id, code: A.code, event: 'FINISH', wabaId: A.waba, phoneNumberId: A.phone });
+  r = await call('POST', '/whatsapp/connect', { businessId: bizA._id, code: A.code, event: 'FINISH' });
+  check('connect: SDK code without its redirect_uri -> Meta 36008 shown', r.status === 400 && /36008/.test(r.body.error), r.body);
+  const exchangesBefore = meta.calls.filter((c) => c.path === 'oauth/access_token').length;
+  r = await call('POST', '/whatsapp/connect', { businessId: bizA._id, code: A.code, redirectUri: 'https://evil.example/cb', event: 'FINISH' });
+  check(
+    'connect: non-SDK redirect_uri rejected before calling Meta',
+    r.status === 400 && meta.calls.filter((c) => c.path === 'oauth/access_token').length === exchangesBefore,
+    r.body
+  );
+
+  r = await call('POST', '/whatsapp/connect', { businessId: bizA._id, code: A.code, redirectUri: A.redirectUri, event: 'FINISH', wabaId: A.waba, phoneNumberId: A.phone });
   check('connect A: success', r.status === 200 && r.body.data?.connected === true && r.body.data.displayPhoneNumber === A.display, r.body);
   check('connect A: response hides IDs and token', !leaksInternals(r.body, A), r.body);
   check('connect A: app subscribed to WABA webhooks', meta.subscribed.has(A.waba));
@@ -275,10 +291,10 @@ try {
   r = await call('GET', `/messages/customer/${cA._id}?businessId=${bizA._id}`);
   check('disconnect: conversation history kept', r.body.data?.messages?.length === 2, r.body);
 
-  r = await call('POST', '/whatsapp/connect', { businessId: bizA._id, code: A.code, event: 'FINISH' });
+  r = await call('POST', '/whatsapp/connect', { businessId: bizA._id, code: A.code, redirectUri: A.redirectUri, event: 'FINISH' });
   check('reconnect A: success', r.status === 200 && r.body.data.connected, r.body);
   check('reconnect A: re-registered with the same PIN', meta.registered[A.phone] === pinA, { pinA, now: meta.registered[A.phone] });
-  r = await call('POST', '/whatsapp/connect', { businessId: bizB._id, code: A.code, event: 'FINISH' });
+  r = await call('POST', '/whatsapp/connect', { businessId: bizB._id, code: A.code, redirectUri: A.redirectUri, event: 'FINISH' });
   check("B cannot connect A's number while A has it (409)", r.status === 409, r.body);
 
   check('no server errors logged', !/\[error\]/.test(serverLog), serverLog.split('\n').filter((l) => l.includes('[error]')).slice(0, 3));

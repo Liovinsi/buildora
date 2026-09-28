@@ -49,7 +49,7 @@ export default function WhatsAppConnectPage() {
   const [sdkError, setSdkError] = useState(null);
   const [phase, setPhase] = useState('idle');
   const [connectError, setConnectError] = useState(null);
-  const [cancelled, setCancelled] = useState(false);
+  const [cancelled, setCancelled] = useState(null);
   const [unavailable, setUnavailable] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -74,7 +74,7 @@ export default function WhatsAppConnectPage() {
   function connect() {
     if (phase !== 'idle') return;
     setConnectError(null);
-    setCancelled(false);
+    setCancelled(null);
     // The platform's Meta app isn't configured on this server: never pretend to connect.
     if (!config.available) {
       setUnavailable(true);
@@ -89,7 +89,7 @@ export default function WhatsAppConnectPage() {
         toast.success('WhatsApp connected');
       })
       .catch((err) => {
-        if (err instanceof SignupCancelled) setCancelled(true);
+        if (err instanceof SignupCancelled) setCancelled(err.message);
         else setConnectError(err.message);
       })
       .finally(() => setPhase('idle'));
@@ -135,13 +135,13 @@ export default function WhatsAppConnectPage() {
           {import.meta.env.DEV && (
             <div className="mt-2 border-t border-amber-200 pt-2 text-xs">
               <span className="font-semibold">Developer:</span> set <code>META_APP_ID</code>, <code>META_APP_SECRET</code>,{' '}
-              <code>META_ES_CONFIG_ID</code> and <code>TOKEN_ENCRYPTION_KEY</code> in the backend <code>.env</code>, restart it, then{' '}
+              <code>EMBEDDED_SIGNUP_CONFIG_ID</code> and <code>TOKEN_ENCRYPTION_KEY</code> in the backend <code>.env</code>, restart it, then{' '}
               <button onClick={() => { setUnavailable(false); reload(); }} className="font-medium underline">check again</button>.
             </div>
           )}
         </Alert>
       )}
-      {cancelled && !busy && <Alert tone="amber">WhatsApp setup wasn’t finished. Click the button again whenever you’re ready.</Alert>}
+      {cancelled && !busy && <Alert tone="amber">{cancelled} Click the button again whenever you’re ready.</Alert>}
       {connectError && !busy && (
         <Alert>
           <div className="font-medium">Couldn’t connect WhatsApp</div>

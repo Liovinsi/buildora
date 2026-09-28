@@ -77,7 +77,7 @@ in the frontend: anything prefixed `VITE_` is shipped to the browser.
 |---|---|
 | `META_APP_ID` | Meta Developer → your app → App settings → Basic → App ID |
 | `META_APP_SECRET` | App settings → Basic → App secret. Used for the code exchange and webhook signature checks. |
-| `META_ES_CONFIG_ID` | Your app → Facebook Login for Business → Configurations → the WhatsApp Embedded Signup configuration's ID |
+| `EMBEDDED_SIGNUP_CONFIG_ID` | Your app → Facebook Login for Business → Configurations → the WhatsApp Embedded Signup configuration's ID |
 | `META_VERIFY_TOKEN` | Any random string **you make up**. You enter the same string in Meta's webhook config. |
 | `META_API_VERSION` | e.g. `v23.0` |
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -hex 32`. Encrypts business tokens at rest. Back it up: losing it means every business must reconnect. |

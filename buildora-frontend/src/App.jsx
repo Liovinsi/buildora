@@ -14,6 +14,7 @@ import NotFoundPage from './pages/NotFoundPage';
 import OrderDetailsPage from './pages/OrderDetailsPage';
 import OrdersPage from './pages/OrdersPage';
 import PaymentSettingsPage from './pages/PaymentSettingsPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import ProductsPage from './pages/ProductsPage';
 import PublicStorePage from './pages/PublicStorePage';
 import SelectBusinessPage from './pages/SelectBusinessPage';
@@ -38,6 +39,7 @@ export default function App() {
               <BrowserRouter>
                 <Routes>
                   <Route path="/" element={<LandingPage />} />
+                  <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
                   <Route path="/create-business" element={<CreateBusinessPage />} />
                   <Route path="/businesses" element={<SelectBusinessPage />} />
                   <Route path="/store/:slug" element={<PublicStorePage />} />
